@@ -11,7 +11,7 @@ permissions:
 
 env:
   REGISTRY: docker.io
-  NAMESPACE: slashmnt
+  NAMESPACE: sryther
   IMAGE: coccinelle-quiz   # single image — built from the Containerfile at repo root
 
 jobs:
