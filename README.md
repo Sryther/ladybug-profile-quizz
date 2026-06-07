@@ -46,22 +46,37 @@ système de fichiers en lecture seule (tout ce qui est inscriptible vit sous
 
 ## Intégration continue (Docker Hub)
 
-Le workflow [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)
+Le workflow [`.github/workflows/build-and-push-images.yml`](.github/workflows/build-and-push-images.yml)
 construit l'image depuis le `Containerfile` (multi-arch `amd64`/`arm64`) et la
-pousse sur **Docker Hub** à chaque push sur `main`, à chaque tag `vX.Y.Z`, ou
-manuellement (`workflow_dispatch`). Les pull requests sont seulement construites
-(pas de push).
+pousse sur **Docker Hub**. Il se déclenche sur **chaque tag Git** de version
+(`1.0.0`, ou `v1.0.0` — le `v` est retiré automatiquement) :
+
+```bash
+git tag 1.0.0 && git push origin 1.0.0
+```
+
+Le pipeline :
+
+1. **meta** — déduit la version du tag et vérifie, parmi tous les tags, s'il
+   s'agit de la plus récente (`sort -V`).
+2. **build-and-push** — build multi-arch avec SBOM + provenance, publie
+   `slashmnt/coccinelle-quiz:<version>`, et ajoute le tag `:latest` si la
+   version est la plus haute.
+3. **sbom** — génère un SBOM SPDX (artefact téléchargeable).
+4. **security-scan** — scan Trivy (OS + librairies) remonté dans l'onglet
+   *Security* de GitHub.
 
 Configurer au préalable, dans **Settings → Secrets and variables → Actions** :
 
 | Type | Nom | Description |
 | --- | --- | --- |
-| Secret | `DOCKERHUB_USERNAME` | Compte / organisation Docker Hub |
+| Secret | `DOCKERHUB_USERNAME` | Compte Docker Hub utilisé pour `docker login` |
 | Secret | `DOCKERHUB_TOKEN` | Jeton d'accès Docker Hub (Account → Security) |
 | Variable (option.) | `DOCKERHUB_REPO` | Nom de l'image (défaut : `coccinelle-quiz`) |
 
-L'image publiée est alors `docker.io/<DOCKERHUB_USERNAME>/coccinelle-quiz`,
-taguée `latest`, par version (`1.2`, `1.2.3`) et par SHA court.
+Le registre et le dépôt cible sont définis par les variables `REGISTRY`,
+`NAMESPACE` (`slashmnt`) et `IMAGE` (`coccinelle-quiz`) en tête du workflow ;
+adaptez `NAMESPACE`/`IMAGE` à votre propre espace Docker Hub si besoin.
 
 ## Déployer sur Kubernetes
 
@@ -69,9 +84,9 @@ Le chart Helm utilise des ressources standard (`Deployment`, `Service`,
 `Ingress`) et applique des `securityContext` durcis.
 
 ```bash
-# Adapter au minimum l'image et le nom d'hôte
+# Adapter au minimum le tag et le nom d'hôte (image par défaut : Docker Hub)
 helm upgrade --install coccinelle-quiz ./chart \
-  --set image.repository=ghcr.io/cox-animation/coccinelle-quiz \
+  --set image.repository=docker.io/slashmnt/coccinelle-quiz \
   --set image.tag=1.0.0 \
   --set ingress.hosts[0].host=coccinelle.cox-anim.fr
 ```
@@ -81,7 +96,7 @@ Valeurs principales (voir `chart/values.yaml`) :
 | Clé                 | Défaut                          | Description                          |
 | ------------------- | ------------------------------- | ------------------------------------ |
 | `replicaCount`      | `2`                             | Nombre de pods                       |
-| `image.repository`  | `ghcr.io/cox-animation/...`     | Dépôt de l'image                     |
+| `image.repository`  | `docker.io/slashmnt/coccinelle-quiz` | Dépôt de l'image                |
 | `image.tag`         | `1.0.0`                         | Tag de l'image                       |
 | `ingress.enabled`   | `true`                          | Crée un Ingress standard             |
 | `ingress.className` | `nginx`                         | Classe d'Ingress                     |
